@@ -1,0 +1,197 @@
+---
+- import_playbook: ./requirements.yml
+
+- name: Pull Docker Image
+  hosts: localhost
+  connection: local
+  become: true
+
+  tasks:
+    - name: Pull image
+      docker_image:
+        name: weibeld/ubuntu-networking
+        source: pull
+
+- name: Configuring Docker networks
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  become: true
+
+  tasks: 
+    - name: Create networks
+      docker_network:
+        name: "{{ item.name }}"
+        ipam_config:
+          - subnet: "{{ item.subnet }}"
+      loop:
+        - { name: "public", subnet: "192.168.69.0/24" }
+        - { name: "internal", subnet: "10.10.16.0/24" }
+        - { name: "admin", subnet: "10.10.4.0/24" }
+
+- name: Starting containers
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  become: true
+
+  tasks:
+    - name: Starting Container 1
+      docker_container:
+        name: public_box
+        image: weibeld/ubuntu-networking
+        networks:
+          - name: public
+          - name: internal
+        state: started
+        command: sleep 1d
+    
+    - name: Starting Container 2
+      docker_container:
+        name: internal_box
+        image: weibeld/ubuntu-networking
+        networks:
+          - name: internal
+          - name: admin
+        state: started
+        command: sleep 1d
+    
+    - name: Starting Container 3
+      docker_container:
+        name: admin_box
+        image: weibeld/ubuntu-networking
+        networks:
+          - name: admin
+        state: started
+        command: sleep 1d
+  
+- name: Create user accounts and ssh servers
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  become: true
+
+
+  tasks:
+    - name: Create Docker users
+      community.docker.docker_container_exec:
+        container: "{{ item.container }}"
+        command: useradd -m -d "{{ item.home }}" -s /bin/bash "{{ item.username }}"
+      loop:
+        - { container: "public_box", username: "danny", home: "/home/danny" }
+        - { container: "internal_box", username: "ariana", home: "/home/ariana" }
+        - { container: "admin_box", username: "jack", home: "/home/jack" }
+    
+    - name: Set Docker users' passwords
+      community.docker.docker_container_exec:
+        container: "{{ item.container }}"
+        command: bash -c "echo '{{ item.username }}:{{ item.password }}' | chpasswd"
+      loop:
+        - { container: "public_box", username: "danny", password: "danny" }
+        - { container: "internal_box", username: "ariana", password: "Password1"}
+        - { container: "admin_box", username: "jack", password: "Complexpassword123#" }
+       
+    - name: Update package lists
+      community.docker.docker_container_exec:
+        container: "{{ item.container }}"
+        command: apt-get update
+      loop:
+        - { container: "public_box" }
+        - { container: "internal_box" }
+        - { container: "admin_box" }
+
+    - name: Install python3
+      community.docker.docker_container_exec:
+        container: "{{ item.container }}"
+        command: apt-get install -y python3
+      loop:
+        - { container: "public_box" }
+        - { container: "admin_box" }
+
+    - name: Add flag 1
+      community.docker.docker_container_exec:
+        container: "public_box"
+        command: sh -c "echo 'CSEC{L00k_Mum_1_4m_4_H4ck3r}' > /home/danny/flag1.txt"
+
+    - name: Add flag 2
+      community.docker.docker_container_exec:
+        container: "internal_box"
+        command: sh -c "echo 'CSEC{1m_0v3r_H3r3_N0w}' > /home/ariana/flag2.txt"
+
+    - name: Add flag 3
+      community.docker.docker_container_exec:
+        container: "public_box"
+        command: sh -c "echo 'flag 3 CSEC{R3v3r3e_P0rt_F0rw4rd_g0_Brr}' > /index.html"
+
+    - name: Add flag 4
+      community.docker.docker_container_exec:
+        container: "admin_box"
+        command: sh -c "echo 'CSEC{1m_Wh3r3_Th3_4dm1N5_4r3}' > /home/jack/flag4.txt"
+
+    - name: Add flag 5
+      community.docker.docker_container_exec:
+        container: "admin_box"
+        command: sh -c "echo 'flag 5 CSEC{P0rt_F0rw4rd1ng_4nd_P1v0t1ng_Pr0}' > /index.html"
+
+    - name: Get python server files
+      community.docker.docker_container_copy_into:
+        container: "{{ item.container }}"
+        path: ./server.py
+        container_path: /server.py
+      loop:
+        - { container: "public_box" }
+        - { container: "admin_box" }
+
+    - name: Starting python servers
+      community.docker.docker_container_exec:
+        container: "{{ item.container }}"
+        command: "{{ item.command }}"
+      loop:
+        - {container: "public_box", command: "sh -c 'chmod 400 /index.html /server.py'"}
+        - {container: "public_box", command: "sh -c 'python3 /server.py &'"}
+        - {container: "admin_box", command: "sh -c 'chmod 400 /index.html /server.py'"}
+        - {container: "admin_box", command: "sh -c 'python3 /server.py &'"}
+
+
+    - name: Install SSH server
+      community.docker.docker_container_exec:
+        container: "{{ item.container }}"
+        command: apt-get install -y openssh-server wget
+      loop:
+        - { container: "public_box" }
+        - { container: "internal_box" }
+        - { container: "admin_box" }
+    
+    - name: Enable password auth for ssh
+      community.docker.docker_container_exec:
+        container: "{{ item.container }}"
+        command: sed -i 's/.*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+      loop:
+        - { container: "public_box" }
+        - { container: "internal_box" }
+        - { container: "admin_box" }
+    
+    - name: Restart SSH service
+      community.docker.docker_container_exec:
+        container: "{{ item.container }}"
+        command: service ssh restart
+      loop:
+        - { container: "public_box" }
+        - { container: "internal_box" }
+        - { container: "admin_box" }
+
+- name: Removing binaries
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  become: true
+
+  tasks:
+    - name: bye bye ssh
+      community.docker.docker_container_exec:
+        container: "{{ item.container }}"
+        command: rm /usr/bin/ssh
+      loop:
+        - { container: "public_box" }
+        - { container: "internal_box" }
+        - { container: "admin_box" }
