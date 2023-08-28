@@ -1,6 +1,4 @@
 ---
-- import_playbook: ./requirements.yml
-
 - name: Pull Docker Image
   hosts: localhost
   connection: local
