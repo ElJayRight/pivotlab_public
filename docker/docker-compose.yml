@@ -1,0 +1,47 @@
+version: '3'
+services:
+  public_box:
+    build:
+      context: ./public_box
+    networks:
+      - public
+      - internal
+    command: sleep 1d
+
+  internal_box:
+    build:
+      context: ./internal_box
+    networks:
+      - internal
+      - admin
+    command: sleep 1d
+
+  admin_box:
+    build:
+      context: ./admin_box
+    networks:
+      - admin
+    command: sleep 1d
+
+
+networks:
+  public:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.69.0/24
+
+  internal:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.10.16.0/24
+
+  admin:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.10.4.0/24
