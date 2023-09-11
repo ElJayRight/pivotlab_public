@@ -1,5 +1,5 @@
 echo "=== Building the lab ==="
-python3 -m pip install ansible-core
+python3 -m pip install ansible-core requests
 ansible-galaxy collection install community.docker
 ansible-playbook playbook.yml
 
